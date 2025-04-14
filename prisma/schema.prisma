@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String               @id @default(uuid())
+  email              String               @unique
+  createdAt          DateTime             @default(now())
+  emailVerified      DateTime?
+  image              String?
+  name               String?
+  phone_number       String?
+  updatedAt          DateTime?            @updatedAt
+  role               String?
+  Account            Account[]
+  ApiKey             ApiKey?
+  Chat               Chat[]
+  DatabaseConnection DatabaseConnection[]
+  File               File[]
+  Folder             Folder[]
+  Session            Session[]
+  Snippet            Snippet[]
+  password Password?
+}
+model Password {
+  id                String  @id @default(uuid())
+  hash     String
+  userId   String   @unique // 👈 Ensures one-to-one by making this unique
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  User              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  id         String   @id @default(uuid())
+
+  @@unique([identifier, token])
+}
+
+model ApiKey {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  apiKey    String   @unique
+  expire    String?
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userId], references: [id])
+}
+
+model ApiUsage {
+  id           String   @id @default(uuid())
+  messageId    String
+  inputTokens  Int?
+  outputTokens Int?
+  cost         Float?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  Message      Message  @relation(fields: [messageId], references: [id])
+}
+
+model Chat {
+  id        String    @id @default(uuid())
+  userId    String
+  title     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  User      User      @relation(fields: [userId], references: [id])
+  Message   Message[]
+}
+
+model Component {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  props       Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime? @updatedAt
+}
+
+model Documentation {
+  id        String    @id @default(uuid())
+  name      String
+  content   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
+}
+
+model File {
+  id          String    @id @default(uuid())
+  name        String
+  content     String
+  createdAt   DateTime  @default(now())
+  createdById String
+  folderId    String?
+  path        String    @unique
+  updatedAt   DateTime? @updatedAt
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  folder      Folder?   @relation(fields: [folderId], references: [id])
+}
+
+model Folder {
+  id          String   @id @default(uuid())
+  name        String
+  path        String   @unique
+  parentId    String?
+  createdById String
+  createdAt   DateTime @default(now())
+  files       File[]
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  parent      Folder?  @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children    Folder[] @relation("FolderHierarchy")
+}
+
+model Message {
+  id        String     @id @default(uuid())
+  chatId    String
+  content   String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  sender    String
+  ApiUsage  ApiUsage[]
+  Chat      Chat       @relation(fields: [chatId], references: [id])
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Snippet {
+  id          String   @id @default(uuid())
+  name        String?
+  code        Json
+  language    String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+}
+
+model DatabaseConnection {
+  id               String   @id @default(uuid())
+  name             String
+  type             String
+  host             String?
+  port             Int?
+  username         String?
+  password         String?
+  databaseName     String?
+  connectionString String?
+  default          Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdById      String
+  createdBy        User     @relation(fields: [createdById], references: [id])
+}
+
+enum Sender {
+  USER
+  AI
+}

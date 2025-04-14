@@ -1,0 +1,22 @@
+{
+  "monorepo": true,
+  "root": "./",
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "plugins": ["@nestjs/swagger"]
+  },
+  "projects": {
+    "filemanager": {
+      "type": "application",
+      "root": "apps/filemanager",
+      "entryFile": "main",
+      "sourceRoot": "apps/filemanager/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/filemanager/tsconfig.app.json"
+      }
+    }
+  }
+}
