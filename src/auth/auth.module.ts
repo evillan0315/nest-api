@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config'; // Import ConfigModule
 import { AuthController } from './auth.controller';
+import { AuthGoogleController } from './auth-google.controller';
 import { AuthService } from './auth.service';
+import { AuthGoogleService } from './auth-google.service';
 import { PassportModule } from '@nestjs/passport'; // For handling passport strategies
 import { GoogleStrategy } from './strategies/google.strategy'; // Add Google strategy for OAuth
 import { JwtModule } from '@nestjs/jwt'; // Add JWT for handling tokens (if using JWT)
@@ -11,7 +13,7 @@ import { GithubAuthGuard } from './guards/github.guard';
 import { CognitoModule } from '../aws/cognito/cognito.module'; // Import CognitoModule
 import { UserModule } from '../user/user.module';
 import { EmailModule } from '../email/email.module';
-
+import { SessionModule } from '../session/session.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -27,10 +29,12 @@ import { EmailModule } from '../email/email.module';
     CognitoModule,
     UserModule,
     EmailModule,
+    SessionModule,
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, AuthGoogleController],
   providers: [
     AuthService,
+    AuthGoogleService,
     GoogleStrategy,
     GoogleAuthGuard,
     GithubStrategy,

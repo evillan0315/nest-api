@@ -6,9 +6,20 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "plugins": ["@nestjs/swagger"]
+    "plugins": [
+      "@nestjs/swagger"
+    ]
   },
   "projects": {
+    "app-generator": {
+      "type": "application",
+      "root": "apps/app-generator",
+      "entryFile": "main",
+      "sourceRoot": "apps/app-generator/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/app-generator/tsconfig.app.json"
+      }
+    },
     "filemanager": {
       "type": "application",
       "root": "apps/filemanager",

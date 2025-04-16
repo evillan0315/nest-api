@@ -1,20 +1,26 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CognitoService } from '../aws/cognito/cognito.service';
 import * as jwt from 'jsonwebtoken';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
-
+import { addHours, addDays } from 'date-fns';
+import {
+  Response as ExpressResponse,
+  Request as ExpressRequest,
+} from 'express';
 import * as bcrypt from 'bcrypt';
 import { CognitoPayload } from '../aws/cognito/cognito.interface';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from '../user/user.service';
 import { EmailService } from '../email/email.service';
+import { SessionService } from '../session/session.service';
 import { UpdateUserDto } from '../user/dto/update-user.dto';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import { UpdateAccountDto } from '../account/dto/update-account.dto';
 import { UserPayload } from './auth.interface';
 import { AuthSignUpDto } from './auth.dto'; // Import the CognitoPayload interface
+import { formatUnixTimestamp } from '../utils/date';
 
 @Injectable()
 export class AuthService {
@@ -24,98 +30,160 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly userService: UserService,
     private readonly emailService: EmailService,
+    private readonly sessionService: SessionService,
   ) {}
   async getAccessToken(payload: any): Promise<any> {
-    const access_token = await this.jwtService.signAsync(payload, {
-      expiresIn: '15m',
+    const expiresIn = '1h';
+    const expiresAt = addHours(new Date(), 1);
+    const accessToken = await this.jwtService.signAsync(payload, {
+      expiresIn: expiresIn,
       secret: process.env.JWT_SECRET || 'jwt_secret',
     });
-    return access_token;
+    const data = {
+      id: uuidv4(),
+      sessionToken: accessToken,
+      userId: payload.sub,
+      expires: expiresAt,
+    };
+    await this.sessionService.create(data);
+    return accessToken;
   }
+
   async generateJwtToken(payload: UserPayload): Promise<any> {
+    const expiresIn = '1d';
+    const expiresAt = addHours(new Date(), 1);
     if (!payload) {
       throw new Error('Missing payload.');
     }
     const user = await this.userService.findByEmail(payload.email);
+    console.log(user, 'user');
     if (!user) {
       throw new Error('User does not exists in the database.');
     }
     if (!process.env.JWT_SECRET) {
       throw new Error('JWT_SECRET is not defined in environment variables.');
     }
-    const access_token = await this.getAccessToken(payload);
+    const newPayload = {
+      sub: user.id,
+      role: user.role,
+      email: user.email,
+      provider: payload.provider,
+      providerAccountId: payload.client_id
+        ? payload.client_id
+        : process.env.JWT_REFRESH_SECRET,
+    };
+    const accessToken = await this.getAccessToken(newPayload);
     if (!process.env.JWT_REFRESH_SECRET) {
       throw new Error(
         'JWT_REFRESH_SECRET is not defined in environment variables.',
       );
     }
-    const refresh_token = await this.jwtService.signAsync(payload, {
+    const refreshToken = await this.jwtService.signAsync(newPayload, {
       expiresIn: '7d',
       secret: process.env.JWT_REFRESH_SECRET || 'refresh_secret',
     });
-    const resultToken = {
+    console.log(refreshToken, 'refreshToken');
+    /*const resultToken = {
       userId: user.id,
       accessToken: access_token,
       refreshToken: refresh_token,
     };
-    return resultToken;
-    /*const account: UpdateAccountDto = {
+    return resultToken;*/
+    const account: UpdateAccountDto = {
       userId: user.id,
       provider: payload.provider,
-      providerAccountId: payload.providerAccountId!,
-      access_token,
-      refresh_token,
+      providerAccountId: newPayload.providerAccountId,
+      access_token: accessToken,
+      refresh_token: refreshToken,
     };
-    return await this.userService.updateUserToken(user.id, account);*/
+    //await this.userService.updateUserToken(user.id, account);
+    return { ...newPayload, accessToken, refreshToken };
   }
 
-  /*async validateUserToken(userId: string, refreshToken: string): Promise<any> {
-    // compare with stored hashed refresh token
-    return await this.userService.compareRefreshToken(userId, refreshToken);
+  async verifyAccessToken(accessToken: string): Promise<any> {
+    try {
+      const decoded = await this.jwtService.verifyAsync(accessToken, {
+        secret: process.env.JWT_SECRET || 'default_secret',
+      });
 
-  }*/
-  async exchangeGoogleCodeForTokens(code: string): Promise<any> {
-    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
-    const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
-    const redirectUri = this.configService.get<string>('COGNITO_REDIRECT_URI');
+      return {
+        sub: decoded.sub,
+        role: decoded.role,
+        provider: decoded.provider,
+        email: decoded.email,
+      };
+    } catch (err) {
+      console.error('Invalid or expired token:', err.message);
+      throw new UnauthorizedException('Invalid or expired access token');
+    }
+  }
+  async verifyRefreshToken(refreshToken: string): Promise<any> {
+    try {
+      const decoded = await this.jwtService.verifyAsync(refreshToken, {
+        secret: process.env.JWT_REFRESH_SECRET || 'refresh_secret',
+      });
+      console.log(decoded, 'verifyRefreshToken refreshToken');
+      return {
+        sub: decoded.sub,
+        role: decoded.role,
+        provider: decoded.provider,
+        email: decoded.email,
+      };
+    } catch (err) {
+      console.error('Invalid or expired token:', err.message);
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+  }
+  async validateRefreshToken(
+    userId: string,
+    refreshToken: string,
+  ): Promise<any> {
+    try {
+      const userAccount = await this.userService.findUserAccountById(userId);
+      console.log(userAccount, 'validateRefreshToken userAccount');
+      if (!userAccount) {
+        throw new Error('Refresh Token does not belong to any user.');
+      }
 
-    // Ensure required environment variables are available
-    if (!clientId || !clientSecret || !redirectUri) {
-      throw new Error(
-        'Missing required environment variables: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, or GOOGLE_REDIRECT_URI.',
+      // compare with stored hashed refresh token
+      const isValid = await bcrypt.compare(
+        refreshToken,
+        userAccount.refresh_token,
       );
-    }
-
-    // Prepare the POST request to Google's OAuth2 token endpoint
-    const url = 'https://oauth2.googleapis.com/token';
-    const params = new URLSearchParams();
-    params.append('grant_type', 'authorization_code');
-    params.append('code', code);
-    params.append('client_id', clientId);
-    params.append('client_secret', clientSecret);
-    params.append('redirect_uri', `${redirectUri}/google`);
-
-    try {
-      const response = await axios.post(url, params);
-
-      return response.data;
-    } catch (error) {
-      throw new Error(`Failed to exchange code for tokens: ${error.message}`);
+      if (!isValid) {
+        throw new Error('Refresh Token does not match with the stored token.');
+      }
+      console.log(refreshToken, isValid);
+      return isValid;
+    } catch (err) {
+      throw new Error('Refresh Token is not valid', err.message);
     }
   }
-  async loginWithGoogle(googleCode: string): Promise<any> {
+  async validateAccessToken(userId: string, accessToken: string): Promise<any> {
     try {
-      const params = new URLSearchParams();
-      const tokenResponse = await this.exchangeGoogleCodeForTokens(googleCode);
-    } catch (error) {
-      throw new Error(`Google OAuth login failed: ${error.message}`);
+      const userAccount = await this.userService.findUserAccountById(userId);
+
+      if (!userAccount) {
+        throw new Error('Access Token does not belong to any user.');
+      }
+      // compare with stored hashed refresh token
+      const isValid = await bcrypt.compare(
+        accessToken,
+        userAccount.access_token,
+      );
+      if (!isValid) {
+        throw new Error('Access Token does not match with the stored token.');
+      }
+      return isValid;
+    } catch (err) {
+      throw new Error('Access Token is not valid', err.message);
     }
   }
-  async logOut(token: string): Promise<any> {
+  async logout(token: string): Promise<any> {
     try {
       const url = 'http://localhost:5000/api/auth/logout';
-      const response = await axios.post(url, {token});
-      return  response;
+      const response = await axios.post(url, { token });
+      return response;
     } catch (error) {
       throw new Error(`Logout failed: ${error.message}`);
     }
@@ -163,26 +231,26 @@ export class AuthService {
         email,
         password,
       );*/
-      const user = await this.userService.findByEmail(email);
-
+      const user = await this.userService.getUserWithPassword(email);
+      const currentPass = await bcrypt.hash(password, 10);
+      const isValid = await bcrypt.compare(password, user?.password?.hash);
+      if (!isValid)
+        throw new Error('Authentication failed : Password incorrect!');
       // TO DO add password bcrypt hashing - Need to add prisma model for password hashing
       if (!user) {
         throw new Error('Authentication failed : User does not exists!');
       }
       const localUserPayload: UserPayload = {
-        userId: user.id,
-        username: user.email,
-        name: user.name,
+        sub: user.id,
         email: user.email,
         provider: 'local',
         role: user.role,
       };
-      const accessToken = await this.getAccessToken(localUserPayload);
-      const payload = { ...localUserPayload, accessToken };
+      //const accessToken = await this.getAccessToken(localUserPayload);
+      //const payload = { ...localUserPayload, accessToken };
 
-      const tokenResult = await this.generateJwtToken(payload);
-      console.log(tokenResult, 'tokenResult');
-      return { ...payload, tokenResult };
+      const tokenResult = await this.generateJwtToken(localUserPayload);
+      return tokenResult;
     } catch (error) {
       throw new Error(`Login failed: ${error.message}`);
     }

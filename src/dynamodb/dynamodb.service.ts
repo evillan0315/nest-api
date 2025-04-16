@@ -31,10 +31,7 @@ export class DynamodbService {
 
   @ApiOperation({ summary: 'Store a command in DynamoDB' })
   @ApiResponse({ status: 201, description: 'Command stored successfully' })
-  async storeCommand(
-    command: string,
-    username?: string,
-  ): Promise<void> {
+  async storeCommand(command: string, username?: string): Promise<void> {
     const commandId = new Date().toISOString();
 
     const putParams = {

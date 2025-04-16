@@ -18,9 +18,10 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "plugins": [
-    {
-      "name": "nestjs-swagger"
-    }
-  ]
+      {
+        "name": "nestjs-swagger"
+      }
+    ],
+    "paths": {}
   }
 }

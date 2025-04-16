@@ -29,12 +29,13 @@ import { Roles } from '../admin/roles/roles.decorator'; // Custom decorator to s
 import { Role } from '../admin/roles/role.enum'; // Ensure correct path
 import { JwtPayload } from '../aws/cognito/jwt-payload.interface'; // JWT Payload Interface for typing
 import { CognitoService } from '../aws/cognito/cognito.service'; // Import the Cognito service
-import { UserService } from '../user/user.service'; 
+import { UserService } from '../user/user.service';
 import { CognitoPayload } from '../aws/cognito/cognito.interface'; // Import the CognitoPayload interface
 import { AuthSignInDto, GetProfileDto, AuthSignUpDto } from './auth.dto'; // Import the CognitoPayload interface
 import { GoogleAuthGuard } from './guards/google.guard'; // Add Google strategy for OAuth
 import { GithubAuthGuard } from './guards/github.guard'; // Add Github strategy for OAuth\
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
+import * as cookie from 'cookie';
 import {
   UpdateAccountDto,
   RefreshAccountDto,
@@ -143,7 +144,7 @@ export class AuthController {
     const { email, password } = credentials;
     try {
       const payload = await this.authService.login(email, password);
-
+      console.log(payload, 'payload login');
       if (payload.accessToken) {
         //const userToken = await this.authService.generateJwtToken(payload);
         res.cookie('access_token', payload.accessToken, {
@@ -151,10 +152,18 @@ export class AuthController {
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
           //path: '/api/auth/refresh', // Only send for refresh route
+          maxAge: 24 * 60 * 60 * 1000, // 7 days
+        });
+      }
+      if (payload.refreshToken) {
+        res.cookie('refresh_token', payload.refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          path: '/api/auth/refresh', // Only send for refresh route
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         });
       }
-
       return payload;
     } catch (error) {
       throw new HttpException(
@@ -182,18 +191,18 @@ export class AuthController {
     }
   }
   @Get('confirm')
-async confirmEmail(@Query('token') token: string) {
-  try {
-    const payload = this.jwtService.verify(token, {
-      secret: process.env.JWT_SECRET,
-    });
+  async confirmEmail(@Query('token') token: string) {
+    try {
+      const payload = this.jwtService.verify(token, {
+        secret: process.env.JWT_SECRET,
+      });
 
-    await this.userService.confirmEmail(payload.email);
-    return { message: 'Email confirmed successfully!' };
-  } catch (error) {
-    throw new BadRequestException('Invalid or expired token');
+      await this.userService.confirmEmail(payload.email);
+      return { message: 'Email confirmed successfully!' };
+    } catch (error) {
+      throw new BadRequestException('Invalid or expired token');
+    }
   }
-}
   @Post('logout')
   @ApiOperation({ summary: 'Logout the current user' })
   @ApiResponse({ status: 200, description: 'User logged out successfully.' })
@@ -374,38 +383,71 @@ async confirmEmail(@Query('token') token: string) {
   })
   @ApiResponse({ status: 401, description: 'Google authentication failed.' })
   async googleCallback(@Req() req, @Res() res: ExpressResponse) {
-    const { user, accessToken } = req.user;
+    const { user, accessToken, refreshToken } = req.user;
     // You can customize the payload
 
     if (!process.env.JWT_SECRET) {
       throw new Error('JWT_SECRET environment variable is not set!');
     }
 
-    const payload = {
+    /*const payload = {
       username: user.username,
       name: user.name,
       email: user.email,
       accessToken,
-      iss: 'google',
-      aud: user.client_id,
+      refreshToken,
+      provider: 'google',
+      providerAccountId: user.client_id,
+      client_id: user.client_id,
       role: user.role,
+    };*/
+    const localUserPayload = {
+      sub: user.id,
+      email: user.email,
+      provider: 'google',
+      role: user.role || 'user',
+      providerAccountId: user.client_id,
+      client_id: user.client_id,
     };
-    if (!process.env.JWT_SECRET) {
-      throw new Error('JWT_SECRET environment variable is not set!');
-    }
-    const token = this.jwtService.sign(payload, {
-      secret: process.env.JWT_SECRET,
-      expiresIn: '1h', // optional
-    });
-    res.cookie('access_token', token, {
+
+    const token = await this.authService.generateJwtToken(localUserPayload);
+    res.cookie('access_token', token.accessToken, {
       httpOnly: true,
       secure: false, // Set to true if using HTTPS
       sameSite: 'strict',
       maxAge: 24 * 60 * 60 * 1000, // 1 day
     });
-
+    res.cookie('refresh_token', token.refreshToken, {
+      httpOnly: true,
+      secure: false, // Set to true if using HTTPS
+      sameSite: 'strict',
+      path: '/api/auth/refresh', // Only send for refresh route
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+    /*if(!payload){
+    	throw new Error('Missing Payload!');
+    }
+    if(payload.accessToken){
+    	res.cookie('access_token', payload.accessToken, {
+	      httpOnly: true,
+	      secure: false, // Set to true if using HTTPS
+	      sameSite: 'strict',
+	      maxAge: 24 * 60 * 60 * 1000, // 1 day
+	    });
+    }
+    if(payload.refreshToken){
+    	res.cookie('refresh_token', payload.refreshToken, {
+	      httpOnly: true,
+	      secure: false, // Set to true if using HTTPS
+	      sameSite: 'strict',
+	      maxAge: 24 * 60 * 60 * 1000, // 1 day
+	    });
+    }*/
+    //return payload;
     // Redirect user with JWT token or to a frontend route
-    res.redirect(`http://localhost:5173/bash?token=${token}`);
+    res.redirect(
+      `http://localhost:5173?token=${token.accessToken}&email=${user.email}`,
+    );
   }
 
   @ApiOperation({ summary: 'Get the user profile' })
@@ -573,12 +615,7 @@ async confirmEmail(@Query('token') token: string) {
     const { accessToken } = body;
 
     try {
-      const user =
-        await this.cognitoService.getUserInfoByAccessToken(accessToken);
-      return {
-        accessToken,
-        user,
-      };
+      return await this.authService.verifyAccessToken(accessToken);
     } catch (error) {
       throw new HttpException(
         {
@@ -602,17 +639,45 @@ async confirmEmail(@Query('token') token: string) {
     status: 401,
     description: 'Invalid refresh token',
   })
-  refreshToken(@Req() req, @Res() res: ExpressResponse) {
-    const user = req.user;
-    console.log(user, 'refreshToken');
-    const userToken = this.authService.generateJwtToken(user);
-    /*res.cookie('access_token', userToken.access_token, {
-	      httpOnly: true,
-	      secure: process.env.NODE_ENV === 'production',
-              sameSite: 'strict',
-              path: '/api/auth/refresh', // Only send for refresh route
-              maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-	    });*/
-    return userToken;
+  async refreshToken(
+    @Req() req,
+    @Res({ passthrough: true }) res: ExpressResponse,
+  ) {
+    let payload = req.user;
+
+    if (!payload) {
+      throw new Error('Payload does not exist!');
+    }
+    const rawCookie = req.headers.cookie || '';
+    const parsedCookies = cookie.parse(rawCookie);
+
+    let token = req.body.refreshToken;
+
+    if (!token) {
+      token = parsedCookies['refresh_token'];
+    }
+    const isValid = await this.authService.validateRefreshToken(
+      payload.sub,
+      token,
+    );
+    if (!isValid) {
+      throw new Error('Not valid refresh token!');
+    }
+
+    const verify = await this.authService.verifyRefreshToken(token);
+    console.log(verify, 'verifyRefreshToken');
+    if (verify) {
+      payload = verify;
+    }
+    const newToken = await this.authService.getAccessToken(payload);
+    res.cookie('access_token', newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+    const verifyNewToken = await this.authService.verifyAccessToken(newToken);
+    console.log(verifyNewToken, `newToken: ${newToken}`);
+    return newToken;
   }
 }

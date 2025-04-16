@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Socket } from 'socket.io';
+import axios from 'axios';
 import * as jwt from 'jsonwebtoken';
 import * as jwksClient from 'jwks-rsa';
 import { CognitoService } from './cognito.service';
@@ -57,12 +58,14 @@ export class CognitoWsGuard implements CanActivate {
 
       const decodedToken = jwt.verify(token, process.env.JWT_SECRET); // throws if expired or invalid
 
-      if(!decodedToken){
-      	throw new UnauthorizedException(
+      if (!decodedToken) {
+        throw new UnauthorizedException(
           'Token does not exists. Please log in again.',
         );
       }
-      const user = await this.userService.findByEmail((decodedToken as jwt.JwtPayload).email);
+      const user = await this.userService.findByEmail(
+        (decodedToken as jwt.JwtPayload).email,
+      );
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
@@ -72,17 +75,11 @@ export class CognitoWsGuard implements CanActivate {
       return true;
     } catch (err) {
       if (err instanceof TokenExpiredError) {
+        client.emit('token_expired', {
+          message: 'Access token has expired. Please refresh.',
+        });
         client.disconnect();
-        if (!process.env.JWT_SECRET) {
-          throw new UnauthorizedException('JWT_SECRET not found');
-        }
-
-        await this.authService.logOut(client.handshake?.auth?.token)
-        
-        
-        throw new UnauthorizedException(
-          'Token has expired. Please log in again.',
-        );
+        return false;
       }
 
       console.error('[CognitoWsGuard] Token error:', err);

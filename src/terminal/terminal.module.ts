@@ -11,7 +11,7 @@ import { AuthModule } from '../auth/auth.module';
     UserModule,
     DynamodbModule,
     CognitoModule, // Import CognitoModule to make CognitoService available
-    AmazonQModule, 
+    AmazonQModule,
     AuthModule,
   ],
   providers: [TerminalGateway],

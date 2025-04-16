@@ -5,5 +5,6 @@ import { PrismaService } from '../prisma/prisma.service';
 @Module({
   controllers: [GoogleGeminiController],
   providers: [GoogleGeminiService, PrismaService],
+  exports: [GoogleGeminiService],
 })
 export class GoogleGeminiModule {}

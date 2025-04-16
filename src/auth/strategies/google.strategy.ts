@@ -50,7 +50,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
           refresh_token: refreshToken,
           // Add any other relevant fields if available from _json
         };
-
+        //console.log(createUserDto, 'createUserDto');
         user = await this.userService.createGoogleUser(createUserDto);
 
         if (!user) {

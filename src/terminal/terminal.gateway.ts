@@ -58,7 +58,6 @@ export class TerminalGateway
     if (cookies) {
       const parsedCookies = cookie.parse(cookies);
       token = parsedCookies['access_token'];
-      
     }
     // If no token found in the header, check cookies
     if (!token) {
@@ -74,7 +73,7 @@ export class TerminalGateway
       client.disconnect();
       return;
     }
-    
+
     // Initialize conversation history for this client
     this.clientConversations.set(client.id, []);
     this.clientDirectories.set(client.id, process.cwd()); // Default cwd

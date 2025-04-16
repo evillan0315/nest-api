@@ -18,11 +18,11 @@ export class AuthSignUpDto {
 export class AuthSignInDto {
   @ApiProperty({
     description: 'User email address',
-    example: 'user@example.com',
+    example: 'edvillan15@gmail.com',
   })
   email: string;
 
-  @ApiProperty({ description: 'User password', example: 'securepassword123' })
+  @ApiProperty({ description: 'User password', example: 'Chuk0y#031582' })
   password: string;
 }
 

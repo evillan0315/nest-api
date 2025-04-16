@@ -27,15 +27,23 @@ export class UserService {
     const access_token = await bcrypt.hash(account.access_token, 10);
     const refresh_token = await bcrypt.hash(account.refresh_token, 10);
     const userAccount = { ...account, access_token, refresh_token };
-    return this.updateUserWithAccount(userId, userAccount);
+    return await this.updateUserWithAccount(userId, userAccount);
   }
 
-  /*async compareRefreshToken(userId: string, refreshToken: string) {
-    const userAccount = await this.findUserTokenById(userId);
-    //const isValid = bcrypt.compare(userAccount.refresh_token, refreshToken);
+  async compareRefreshToken(userId: string, refreshToken: string) {
+    const userAccount = await this.findUserAccountById(userId);
+    console.log(userAccount, 'userAccount.refresh_token compareRefreshToken');
+    console.log(refreshToken, 'refreshToken compareRefreshToken');
+    if (!userAccount) {
+      return false;
+    }
+    const isValid = await bcrypt.compare(
+      refreshToken,
+      userAccount.refresh_token,
+    );
     //console.log(isValid, 'isValid');
-    return userAccount;
-  }*/
+    return isValid;
+  }
   async create(data: CreateUserDto) {
     const saltRounds = 10;
     console.log(data, 'data');
@@ -178,15 +186,28 @@ export class UserService {
     return await this.prisma.account.findFirst({ where: { userId } });
   }
 
+  async getUserWithPassword(email: string) {
+    return this.prisma.user.findUnique({
+      where: { email },
+      include: {
+        Account: true, // 👈 this pulls in the related accounts
+        password: true,
+      },
+    });
+  }
   async findByEmail(email: string) {
     return this.prisma.user.findUnique({ where: { email } });
   }
-
   async updateUserWithAccount(userId: string, accountDto: UpdateAccountDto) {
+    console.log(accountDto, 'updateUserWithAccount');
     const userAccount = await this.prisma.account.findFirst({
-      where: { userId, provider: accountDto.provider },
+      where: {
+        userId,
+        provider: accountDto.provider,
+        providerAccountId: accountDto.providerAccountId,
+      },
     });
-
+    console.log(userAccount, 'userAccount updateUserWithAccount');
     if (!userAccount) {
       const data = {
         ...accountDto,
@@ -194,14 +215,14 @@ export class UserService {
         id: uuidv4(),
         type: accountDto.type || 'localAuth',
         provider: accountDto.provider || 'auth',
-        providerAccountId: userId || 'local',
+        providerAccountId: accountDto.providerAccountId || 'local',
       };
       console.log(data, 'updateUserWithAccount data');
-      return this.prisma.account.create({
+      return await this.prisma.account.create({
         data,
       });
     }
-    return this.prisma.account.update({
+    return await this.prisma.account.update({
       where: { id: userAccount.id },
       data: accountDto,
     });

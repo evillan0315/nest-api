@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
+
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
 
@@ -8,6 +10,7 @@ export class SessionService {
   constructor(private prisma: PrismaService) {}
 
   create(data: CreateSessionDto) {
+    console.log(data, 'CreateSessionDto');
     return this.prisma.session.create({ data });
   }
 

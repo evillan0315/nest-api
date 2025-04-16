@@ -36,6 +36,7 @@ import { RdsModule } from './rds/rds.module';
 import { SnippetModule } from './snippet/snippet.module';
 import { PasswordModule } from './password/password.module';
 import { EmailModule } from './email/email.module';
+import { UtilsModule } from './utils/utils.module';
 
 @Module({
   controllers: [AppController, DockerController],
@@ -80,6 +81,7 @@ import { EmailModule } from './email/email.module';
     SnippetModule,
     PasswordModule,
     EmailModule,
+    UtilsModule,
   ],
 })
 export class AppModule {}
