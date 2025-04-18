@@ -7,7 +7,7 @@ import * as jwt from 'jsonwebtoken';
 import { Request } from 'express';
 import { TokenExpiredError } from 'jsonwebtoken';
 @Injectable()
-export class CognitoStrategy extends PassportStrategy(Strategy, 'jwt') {
+export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor() {
     super({
       jwtFromRequest: (req: Request) => {

@@ -1,7 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import * as dotenv from 'dotenv';
+import { ConfigService } from '@nestjs/config';
+
 import * as cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as path from 'path';
@@ -23,6 +24,10 @@ async function bootstrap() {
     'https://board-dynamodb.duckdns.org',
   ];
 
+  const configService = app.get(ConfigService);
+  const NODE_ENV = configService.get<string>('NODE_ENV') || 'development';
+  const swaggerEnabled = configService.get<boolean>('SWAGGER_ENABLED') || false;
+  const port = configService.get<number>('PORT', 5000);
   app.use(cookieParser());
   app.enableCors({
     origin: (origin, callback) => {
@@ -52,22 +57,26 @@ async function bootstrap() {
 
   // Set the base directory for views
   app.setBaseViewsDir(path.join(__dirname, '..', 'views'));
-  // Swagger Configuration
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Server API')
-    .setDescription('API Documentation')
-    .setVersion('1.0')
-    .addTag('Auth')
-    .addBearerAuth() // Enable Authorization Header
-    .build();
+  if (NODE_ENV !== 'production' || swaggerEnabled === true) {
+    // Swagger Configuration
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Server API')
+      .setDescription('API Documentation')
+      .setVersion('1.0')
+      .addTag('Auth')
+      .addBearerAuth() // Enable Authorization Header
+      .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api', app, document); // Swagger UI at /api/docs
-
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api', app, document); // Swagger UI at /api/docs
+    console.log('🥞 Swagger is enabled at /docs');
+  } else {
+    console.log('🚫 Swagger is disabled in production');
+  }
   // Graceful shutdown setup
   app.enableShutdownHooks(); // Handle graceful shutdown
   //app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  const port = process.env.PORT ?? 5000;
+
   await app.listen(port);
   logger.log(`Application is running on: http://localhost:${port}`);
   logger.log(`WebSocket server is running on port: ${port}`);

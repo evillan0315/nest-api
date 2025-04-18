@@ -12,6 +12,7 @@ import { UserPayload } from '../auth/auth.interface';
 import { CreateGoogleUserDto } from '../auth/dto/create-google-user.dto';
 import { CreateGithubUserDto } from '../auth/dto/create-github-user.dto';
 import { CreateCognitoUserDto } from '../auth/dto/create-cognito-user.dto';
+import { FolderService } from '../folder/folder.service';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 @Injectable()
@@ -19,6 +20,7 @@ export class UserService {
   constructor(
     private prisma: PrismaService,
     private passwordService: PasswordService,
+    private folderService: FolderService,
   ) {}
   async updateUserToken(
     userId: string,
@@ -46,9 +48,9 @@ export class UserService {
   }
   async create(data: CreateUserDto) {
     const saltRounds = 10;
-    console.log(data, 'data');
+
     const hashedPassword = await bcrypt.hash(data.password, saltRounds);
-    console.log(hashedPassword, 'hashedPassword');
+
     const user = await this.prisma.user.create({
       data: {
         ...data,
@@ -173,14 +175,35 @@ export class UserService {
   }
 
   async findOne(id: string) {
-    return this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id },
       include: {
-        Account: true, // 👈 this pulls in the related accounts
+        Account: true,
         Session: true,
+        Folder: true, // Pulling in the array of Folders
       },
     });
-    //return this.prisma.user.findUnique({ where: { id } });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Check if the user has no folders
+    if (user.Folder.length === 0) {
+      // If no folders, create a default folder with specific parameters
+      const folder = await this.prisma.folder.create({
+        data: {
+          name: `${user.id}`,
+          path: `/${user.id}`, // or choose a more dynamic path if needed
+          parentId: null, // You can adjust this if you want a parent folder structure
+          createdById: user.id, // The user who created the folder
+        },
+      });
+
+      console.log(`Created folder for user ${id}: ${folder.name}`);
+    }
+
+    return user;
   }
   async findUserAccountById(userId: string) {
     return await this.prisma.account.findFirst({ where: { userId } });

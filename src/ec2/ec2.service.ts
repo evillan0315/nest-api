@@ -32,9 +32,10 @@ export class Ec2Service {
   private readonly ec2: EC2Client;
   private readonly logger = new Logger(Ec2Service.name);
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(private configService: ConfigService) {
     // Initialize EC2 client with credentials from environment variables
-    const region = this.configService.get<string>('AWS_REGION');
+    const region =
+      this.configService.get<string>('AWS_REGION') || 'ap-southeast-2';
     const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
     const secretAccessKey = this.configService.get<string>(
       'AWS_SECRET_ACCESS_KEY',

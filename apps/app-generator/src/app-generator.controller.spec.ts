@@ -11,7 +11,9 @@ describe('AppGeneratorController', () => {
       providers: [AppGeneratorService],
     }).compile();
 
-    appGeneratorController = app.get<AppGeneratorController>(AppGeneratorController);
+    appGeneratorController = app.get<AppGeneratorController>(
+      AppGeneratorController,
+    );
   });
 
   describe('root', () => {

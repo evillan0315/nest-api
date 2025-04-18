@@ -32,6 +32,7 @@ export class AwsBillingController {
     description: 'Failed to retrieve cost and usage data.',
   })
   async getCostAndUsage(
+    @Query('Granularity') Granularity: string,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
   ): Promise<CostAndUsageResponse> {

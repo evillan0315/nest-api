@@ -46,6 +46,16 @@ import { FileFormatDto } from './dto/file-format.dto';
 import { FileInputDto } from './dto/file-input.dto';
 import { ReadFileDto } from './dto/read-file.dto';
 import { ReadFileResponseDto } from './dto/read-file-response.dto';
+import { GenerateContentDto } from './dto/generate-content.dto';
+export interface AuthenticatedRequest extends Request {
+  user: {
+    sub: string;
+    role: Role;
+    email?: string;
+    [key: string]: any;
+  };
+}
+
 @ApiBearerAuth()
 @UseGuards(CognitoGuard, RolesGuard)
 @ApiTags('File')
@@ -123,7 +133,9 @@ export class FileController {
         buffer = await fs.readFile(body.filePath);
         filename = body.filePath.split('/').pop() || filename;
       } catch {
-        throw new BadRequestException(`Unable to read file from path: ${body.filePath}`);
+        throw new BadRequestException(
+          `Unable to read file from path: ${body.filePath}`,
+        );
       }
     } else if (body.url) {
       try {
@@ -131,7 +143,9 @@ export class FileController {
         buffer = Buffer.from(res.data);
         filename = body.url.split('/').pop() || filename;
       } catch {
-        throw new BadRequestException(`Unable to fetch file from URL: ${body.url}`);
+        throw new BadRequestException(
+          `Unable to fetch file from URL: ${body.url}`,
+        );
       }
     } else {
       throw new BadRequestException('Please provide a file, filePath, or url.');
@@ -205,18 +219,57 @@ export class FileController {
 
     return this.fileService.readFileAndConvert(buffer, body.format);
   }
-  @Post()
+  /*@Post()
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @ApiOperation({ summary: 'Create new File' })
   create(@Body() dto: CreateFileDto) {
     return this.fileService.create(dto);
+  }*/
+  @Post('generate')
+  @ApiOperation({ summary: 'Generate content using Gemini' })
+  @ApiResponse({ status: 200, description: 'Generated content as string.' })
+  async generateContent(
+    @Body() generateContentDto: GenerateContentDto,
+  ): Promise<string> {
+    const { content, type } = generateContentDto;
+    return this.fileService.generate(content, type);
   }
-
+  @Post('create')
+  @ApiOperation({ summary: 'Create a new file' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'document.txt' },
+        content: { type: 'string', example: 'Hello, world!' },
+        parentId: { type: 'string', nullable: true, example: 'folder-67890' },
+      },
+      required: ['name', 'content'], // 'createdById' is not required in the request
+    },
+  })
+  @ApiResponse({ status: 201, description: 'File created successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid request' })
+  async createFile(
+    @Body() body: { name: string; content: string; parentId?: string },
+  ) {
+    return await this.fileService.createFile(
+      body.name,
+      body.content,
+      body.parentId,
+    );
+  }
   @Get()
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.USER)
   @ApiOperation({ summary: 'Get all File records' })
-  findAll() {
-    return this.fileService.findAll();
+  findAll(@Req() req: AuthenticatedRequest) {
+    const user = req.user; // Adjust the type if you have a custom one
+    const isAdmin = user?.role === Role.ADMIN || user?.role === Role.SUPERADMIN;
+
+    if (isAdmin) {
+      return this.fileService.findAll(); // fetch all files
+    }
+
+    return this.fileService.findAll({ createdById: user.sub }); // fetch user-specific files
   }
 
   @Get(':id')

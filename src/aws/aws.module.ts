@@ -7,9 +7,6 @@ import { AwsBillingController } from './aws-billing.controller';
 @Global() // Makes this module global
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true, // Makes the config accessible throughout the app
-    }),
     CognitoModule, // Import the Cognito module
   ],
   controllers: [AwsBillingController], // Add the AWS Billing controller
