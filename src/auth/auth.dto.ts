@@ -22,7 +22,7 @@ export class AuthSignInDto {
   })
   email: string;
 
-  @ApiProperty({ description: 'User password', example: 'Chuk0y#031582' })
+  @ApiProperty({ description: 'User password', example: '' })
   password: string;
 }
 
