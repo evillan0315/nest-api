@@ -107,34 +107,33 @@ export class FileService {
 
     return processedText;
   }
-  async generate(content: string, type: string): Promise<string> {
+  async generate(
+    content: string,
+    type: string,
+    topic?: string,
+    chatId?: string,
+  ): Promise<string> {
     let rule = `:\n\nDo not include comments, suggestions, or instructions.`;
     let inst = `Generate the following content a ${type.toUpperCase()}`;
-
+    let top = `for a ${topic}`;
+    if (!topic) top = '';
     if (type === 'documentation') {
-      inst = `Generate a ${type} for the following content`;
-      rule = `Do not include instructions`;
+      inst = `You are a technical writer generating ${type} ${top}.`;
+      rule = `The documentation should always include a title and should be clear, concise, and well-structured explanations with code examples.`;
     }
-    const geminiDto: GeminiDto = {
-      contents: [
-        {
-          parts: [
-            {
-              text: `${inst}:\n\n${content}${rule}`,
-            },
-          ],
-        },
-      ],
-    };
-
-    const response = await this.geminiService.generateContent(geminiDto);
+    const response = await this.geminiService.processInputAndSaveToDb(
+      `${inst}:\n\n${content}${rule}`,
+      inst,
+      chatId || '60b7e155-fec8-4510-be2b-f3a8e25d3cfc',
+    );
 
     // Handle response from Gemini (assuming it's in candidates[0].content.parts[0].text)
-    const processedText =
-      response?.candidates?.[0]?.content?.parts?.[0]?.text ??
-      'No response from Gemini';
-
-    return processedText;
+    const processedText = response?.content ?? 'No response from Gemini';
+    if (type === 'documentation') {
+      const data = { name: response?.title, content: processedText };
+      await this.prisma.documentation.create({ data });
+    }
+    return response;
   }
   create(data: CreateFileDto) {
     return this.prisma.file.create({ data });

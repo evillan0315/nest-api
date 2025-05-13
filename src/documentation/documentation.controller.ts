@@ -7,8 +7,16 @@ import {
   Patch,
   Delete,
   UseGuards,
+  Query,
+  HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { Roles } from '../admin/roles/roles.decorator';
 import { Role } from '../admin/roles/role.enum';
 import { RolesGuard } from '../admin/roles/roles.guard';
@@ -17,6 +25,8 @@ import { CognitoGuard } from '../aws/cognito/cognito.guard';
 import { DocumentationService } from './documentation.service';
 import { CreateDocumentationDto } from './dto/create-documentation.dto';
 import { UpdateDocumentationDto } from './dto/update-documentation.dto';
+import { PaginationResultDto } from './dto/pagination-result.dto';
+import { PaginationQueryDto } from './dto/pagination-query.dto';
 
 @ApiBearerAuth()
 @UseGuards(CognitoGuard, RolesGuard)
@@ -38,7 +48,23 @@ export class DocumentationController {
   findAll() {
     return this.documentationService.findAll();
   }
-
+  @Get('paginated')
+  @ApiOperation({ summary: 'Get paginated list of documentations' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number, example: 10 })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Paginated list of documentations',
+    type: PaginationResultDto,
+  })
+  async findAllPaginated(@Query() query: PaginationQueryDto) {
+    const { page, pageSize } = query;
+    return this.documentationService.findAllPaginated(
+      undefined,
+      page,
+      pageSize,
+    );
+  }
   @Get(':id')
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @ApiOperation({ summary: 'Get one Documentation by ID' })

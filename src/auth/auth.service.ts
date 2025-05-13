@@ -20,7 +20,11 @@ import { CreateUserDto } from '../user/dto/create-user.dto';
 import { UpdateAccountDto } from '../account/dto/update-account.dto';
 import { UserPayload } from './auth.interface';
 import { AuthSignUpDto } from './auth.dto'; // Import the CognitoPayload interface
-import { formatUnixTimestamp } from '../utils/date';
+import {
+  formatUnixTimestamp,
+  parseDurationToMs,
+  toUnixSeconds,
+} from '../utils/date';
 
 @Injectable()
 export class AuthService {
@@ -33,71 +37,119 @@ export class AuthService {
     private readonly sessionService: SessionService,
   ) {}
   async getAccessToken(payload: any): Promise<any> {
-    const expiresIn = '1h';
-    const expiresAt = addHours(new Date(), 1);
+    const expiresIn = parseDurationToMs('1h');
+    const iat = toUnixSeconds(new Date(Date.now()));
+    const expires = new Date(Date.now() + expiresIn);
+    const expiresAt = toUnixSeconds(expires);
+    if (!process.env.JWT_SECRET) {
+      throw new Error('JWT_SECRET is not defined in environment variables.');
+    }
     const accessToken = await this.jwtService.signAsync(payload, {
       expiresIn: expiresIn,
-      secret: process.env.JWT_SECRET || 'jwt_secret',
+      secret: process.env.JWT_SECRET,
     });
     const data = {
       id: uuidv4(),
       sessionToken: accessToken,
       userId: payload.sub,
-      expires: expiresAt,
+      expires,
     };
     await this.sessionService.create(data);
-    return accessToken;
+    return { expiresIn, accessToken };
   }
+  async getRefreshToken(payload: any): Promise<any> {
+    const expiresIn = parseDurationToMs('7d');
+    const iat = toUnixSeconds(new Date(Date.now()));
+    const expires = new Date(Date.now() + expiresIn);
+    const expiresAt = toUnixSeconds(expires);
 
-  async generateJwtToken(payload: UserPayload): Promise<any> {
-    const expiresIn = '1d';
-    const expiresAt = addHours(new Date(), 1);
-    if (!payload) {
-      throw new Error('Missing payload.');
-    }
-    const user = await this.userService.findByEmail(payload.email);
-    console.log(user, 'user');
-    if (!user) {
-      throw new Error('User does not exists in the database.');
-    }
-    if (!process.env.JWT_SECRET) {
-      throw new Error('JWT_SECRET is not defined in environment variables.');
-    }
-    const newPayload = {
-      sub: user.id,
-      role: user.role,
-      email: user.email,
-      provider: payload.provider,
-      providerAccountId: payload.client_id
-        ? payload.client_id
-        : process.env.JWT_REFRESH_SECRET,
-    };
-    const accessToken = await this.getAccessToken(newPayload);
     if (!process.env.JWT_REFRESH_SECRET) {
       throw new Error(
         'JWT_REFRESH_SECRET is not defined in environment variables.',
       );
     }
-    const refreshToken = await this.jwtService.signAsync(newPayload, {
-      expiresIn: '7d',
-      secret: process.env.JWT_REFRESH_SECRET || 'refresh_secret',
+    const refreshToken = await this.jwtService.signAsync(payload, {
+      expiresIn: expiresIn,
+      secret: process.env.JWT_REFRESH_SECRET,
     });
-    console.log(refreshToken, 'refreshToken');
-    /*const resultToken = {
-      userId: user.id,
-      accessToken: access_token,
-      refreshToken: refresh_token,
+    const data = {
+      id: uuidv4(),
+      sessionToken: refreshToken,
+      userId: payload.sub,
+      expires,
     };
-    return resultToken;*/
+    await this.sessionService.create(data);
+    return { id_token: data.id, expiresAt, refreshToken };
+  }
+  async generateJwtToken(payload: UserPayload): Promise<any> {
+    const expiresIn = parseDurationToMs('7d');
+    const expiresAt = new Date(Date.now() + expiresIn);
+    const provId = payload.providerAccountId
+      ? payload.providerAccountId
+      : process.env.PROVIDER_ID;
+    let refreshToken;
+    if (!payload) {
+      throw new Error('Missing payload.');
+    }
+    if (!payload.sub) throw new Error('Missing payload sub.');
+    const user = await this.userService.findOne(payload.sub);
+    if (!user) {
+      throw new Error('User does not exists in the database.');
+    }
+    const uAccount = user.Account;
+    const newPayload = {
+      sub: user.id,
+      role: user.role,
+      email: user.email,
+      provider: payload.provider,
+      providerAccountId: payload.providerAccountId
+        ? payload.providerAccountId
+        : process.env.PROVIDER_ID,
+    };
+    const foundAccount = uAccount.find(
+      (account) => account.providerAccountId === provId,
+    );
+    if (foundAccount && foundAccount.id_token && foundAccount.expires_at) {
+      const iat = toUnixSeconds(new Date(Date.now()));
+      if (iat > foundAccount.expires_at) {
+        refreshToken = await this.getRefreshToken(newPayload);
+      } else {
+        const refresh_token = await this.sessionService.findOne(
+          foundAccount?.id_token,
+        );
+
+        if (refresh_token && refresh_token.id && refresh_token.sessionToken) {
+          refreshToken = {
+            id_token: refresh_token.id,
+            expiresAt: foundAccount.expires_at,
+            refreshToken: refresh_token.sessionToken,
+          };
+        }
+      }
+    } else {
+      refreshToken = await this.getRefreshToken(newPayload);
+    }
+
+    const accessToken = await this.getAccessToken(newPayload);
+
+    const token = { ...accessToken, ...refreshToken };
+
     const account: UpdateAccountDto = {
       userId: user.id,
       provider: payload.provider,
       providerAccountId: newPayload.providerAccountId,
-      access_token: accessToken,
-      refresh_token: refreshToken,
+      access_token: token.accessToken,
+      refresh_token: token.refreshToken,
+      expires_at: token.expiresAt,
+      id_token: token.id_token,
+      token_type: 'jwt',
     };
-    //await this.userService.updateUserToken(user.id, account);
-    return { ...newPayload, accessToken, refreshToken };
+    const userAccount = await this.userService.updateUserToken(
+      user.id,
+      account,
+    );
+    console.log(userAccount, 'userAccount generateJwtToken');
+    return { ...token, user: newPayload };
   }
 
   async verifyAccessToken(accessToken: string): Promise<any> {
@@ -110,6 +162,9 @@ export class AuthService {
         sub: decoded.sub,
         role: decoded.role,
         provider: decoded.provider,
+        providerAccountId: decoded.providerAccountId
+          ? decoded.providerAccountId
+          : process.env.PROVIDER_ID,
         email: decoded.email,
       };
     } catch (err) {
@@ -122,11 +177,11 @@ export class AuthService {
       const decoded = await this.jwtService.verifyAsync(refreshToken, {
         secret: process.env.JWT_REFRESH_SECRET || 'refresh_secret',
       });
-      console.log(decoded, 'verifyRefreshToken refreshToken');
       return {
         sub: decoded.sub,
         role: decoded.role,
         provider: decoded.provider,
+        providerAccountId: decoded.providerAccountId,
         email: decoded.email,
       };
     } catch (err) {
@@ -139,21 +194,34 @@ export class AuthService {
     refreshToken: string,
   ): Promise<any> {
     try {
-      const userAccount = await this.userService.findUserAccountById(userId);
-      console.log(userAccount, 'validateRefreshToken userAccount');
-      if (!userAccount) {
-        throw new Error('Refresh Token does not belong to any user.');
-      }
+      const session = await this.sessionService.findByTokenByUserId(
+        userId,
+        refreshToken,
+      );
 
+      if (!session) {
+        throw new Error('Refresh Token does exists.');
+      }
+      const user = await this.userService.findOne(userId);
+      if (!user) {
+        throw new Error('User does not exists for this refresh token.');
+      }
+      const userAccount = user.Account;
+
+      const foundAccount = userAccount.find(
+        (account) => account.id_token === session.id,
+      );
+      if (!foundAccount) {
+        throw new Error('User account does not exists for this sessionToken.');
+      }
       // compare with stored hashed refresh token
       const isValid = await bcrypt.compare(
         refreshToken,
-        userAccount.refresh_token,
+        foundAccount.refresh_token,
       );
       if (!isValid) {
         throw new Error('Refresh Token does not match with the stored token.');
       }
-      console.log(refreshToken, isValid);
       return isValid;
     } catch (err) {
       throw new Error('Refresh Token is not valid', err.message);
@@ -203,7 +271,7 @@ export class AuthService {
         name: credentials.name,
         createdAt: new Date(), // Set the current date for createdAt
         password: credentials.password,
-        role: 'user',
+        role: credentials.role
       };
 
       // Create the user
@@ -244,6 +312,7 @@ export class AuthService {
         sub: user.id,
         email: user.email,
         provider: 'local',
+        providerAccountId: process.env.PROVIDER_ID,
         role: user.role,
       };
       //const accessToken = await this.getAccessToken(localUserPayload);

@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordService } from '../password/password.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -13,6 +15,11 @@ import { CreateGoogleUserDto } from '../auth/dto/create-google-user.dto';
 import { CreateGithubUserDto } from '../auth/dto/create-github-user.dto';
 import { CreateCognitoUserDto } from '../auth/dto/create-cognito-user.dto';
 import { FolderService } from '../folder/folder.service';
+import {
+  formatUnixTimestamp,
+  parseDurationToMs,
+  toUnixSeconds,
+} from '../utils/date';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 @Injectable()
@@ -29,6 +36,7 @@ export class UserService {
     const access_token = await bcrypt.hash(account.access_token, 10);
     const refresh_token = await bcrypt.hash(account.refresh_token, 10);
     const userAccount = { ...account, access_token, refresh_token };
+    console.log(userAccount, 'userAccount updateUserToken');
     return await this.updateUserWithAccount(userId, userAccount);
   }
 
@@ -50,7 +58,6 @@ export class UserService {
     const saltRounds = 10;
 
     const hashedPassword = await bcrypt.hash(data.password, saltRounds);
-
     const user = await this.prisma.user.create({
       data: {
         ...data,
@@ -59,11 +66,31 @@ export class UserService {
             hash: hashedPassword,
           },
         },
+        Account: {
+          create: [
+            {
+              type: 'jwt', // adjust type if needed
+              provider: 'local',
+              providerAccountId: uuidv4(),
+            },
+          ],
+        },
+        Folder: {
+          create: [
+            {
+              name: `${data.email}`,
+              path: `/${data.email}`, // unique path based on email
+            },
+          ],
+        },
       },
       include: {
         password: true,
+        Account: true,
+        Folder: true,
       },
     });
+    
     return user;
   }
   async update(id: string, data: UpdateUserDto) {
@@ -179,7 +206,7 @@ export class UserService {
       where: { id },
       include: {
         Account: true,
-        Session: true,
+        //Session: true,
         Folder: true, // Pulling in the array of Folders
       },
     });
@@ -193,8 +220,8 @@ export class UserService {
       // If no folders, create a default folder with specific parameters
       const folder = await this.prisma.folder.create({
         data: {
-          name: `${user.id}`,
-          path: `/${user.id}`, // or choose a more dynamic path if needed
+          name: `${user.email}`,
+          path: `/${user.email}`, // or choose a more dynamic path if needed
           parentId: null, // You can adjust this if you want a parent folder structure
           createdById: user.id, // The user who created the folder
         },
@@ -213,7 +240,7 @@ export class UserService {
     return this.prisma.user.findUnique({
       where: { email },
       include: {
-        Account: true, // 👈 this pulls in the related accounts
+        Account: true,
         password: true,
       },
     });
@@ -222,15 +249,15 @@ export class UserService {
     return this.prisma.user.findUnique({ where: { email } });
   }
   async updateUserWithAccount(userId: string, accountDto: UpdateAccountDto) {
-    console.log(accountDto, 'updateUserWithAccount');
     const userAccount = await this.prisma.account.findFirst({
       where: {
         userId,
-        provider: accountDto.provider,
-        providerAccountId: accountDto.providerAccountId,
+        //provider: accountDto.provider,
+        //providerAccountId: accountDto.providerAccountId,
       },
     });
     console.log(userAccount, 'userAccount updateUserWithAccount');
+    console.log(accountDto.providerAccountId, 'accountDto.providerAccountId updateUserWithAccount');
     if (!userAccount) {
       const data = {
         ...accountDto,
@@ -240,14 +267,17 @@ export class UserService {
         provider: accountDto.provider || 'auth',
         providerAccountId: accountDto.providerAccountId || 'local',
       };
-      console.log(data, 'updateUserWithAccount data');
       return await this.prisma.account.create({
         data,
       });
     }
+    const account = {
+      ...accountDto,
+      providerAccountId: userAccount.providerAccountId
+    }
     return await this.prisma.account.update({
       where: { id: userAccount.id },
-      data: accountDto,
+      data: account,
     });
   }
   remove(id: string) {

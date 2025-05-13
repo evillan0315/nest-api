@@ -22,7 +22,9 @@ export const timeAgo = (ms: number): string => {
     return formatter.format(-year, 'year');
   }
 };
-
+export function toUnixSeconds(date: Date | string): number {
+  return Math.floor(new Date(date).getTime() / 1000);
+}
 export const parseDurationToMs = (duration: string): number => {
   const match = duration.match(/^(\d+)([dhms])$/);
   if (!match) throw new Error('Invalid duration format');

@@ -12,9 +12,6 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateComponentDto {
-  @ApiProperty({ description: 'id field' })
-  @IsString()
-  id: string;
   @ApiProperty({ description: 'name field' })
   @IsString()
   name: string;
@@ -26,11 +23,4 @@ export class CreateComponentDto {
   @IsOptional()
   @IsObject()
   props: any;
-  @ApiProperty({ description: 'createdAt field' })
-  @IsDate()
-  createdAt: Date;
-  @ApiProperty({ description: 'updatedAt field' })
-  @IsOptional()
-  @IsDate()
-  updatedAt: Date;
 }

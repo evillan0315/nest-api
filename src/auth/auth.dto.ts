@@ -13,6 +13,9 @@ export class AuthSignUpDto {
 
   @ApiProperty({ description: 'User name', example: 'John Doe' })
   name: string;
+  
+  @ApiProperty({ description: 'Role', example: 'User' })
+  role: string;
 }
 
 export class AuthSignInDto {

@@ -1,82 +1,194 @@
 import {
-  Body,
   Controller,
   Post,
+  UploadedFile,
+  UseInterceptors,
   HttpException,
   HttpStatus,
+  Body,
+  Res,
 } from '@nestjs/common';
-import { ApiBody, ApiOperation, ApiTags, ApiResponse } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import * as dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
+import { Response } from 'express';
 import { timeAgo, parseDurationToMs, formatUnixTimestamp } from './date';
 import { capitalize, toKebabCase, reverseString, truncateText } from './string';
 import { parseInsertSqlToJson, parseSqlToJson, jsonToInsertSql } from './sql';
+import { MarkdownDto } from './dto/markdown.dto';
+import { UploadEnvDto } from './dto/upload-env.dto';
+import { UploadJsonDto } from './dto/upload-json.dto';
+import { JsonBodyDto } from './dto/json-body.dto';
+
 import {
   uniqueArray,
   copyToClipboardSync,
   copyToClipboardAsync,
 } from './helper';
 
+function parseEnvToJsonString(content: string): Record<string, string> {
+  const lines = content.split('\n');
+  const result: Record<string, string> = {};
+
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith('#')) continue;
+
+    const [key, ...rest] = line.split('=');
+    const value = rest
+      .join('=')
+      .trim()
+      .replace(/^"(.*)"$/, '$1');
+    result[key.trim()] = value;
+  }
+
+  return result;
+}
+
 @ApiTags('Utilities')
 @Controller('utils')
 export class UtilsController {
-  /**
-   * Copies the given text to the clipboard asynchronously.
-   *
-   * This function uses the Clipboard API to perform the copy operation. It provides
-   * user feedback via an alert (for demonstration purposes). In a real application,
-   * you would likely use a more user-friendly method like a toast notification.
-   *
-   * @param text The text to copy to the clipboard.
-   * @returns A Promise that resolves when the text is successfully copied, or rejects
-   *          if an error occurs (e.g., Clipboard API not supported). The Promise does
-   *          not resolve with a value (void).
-   * @throws {Error} If the Clipboard API is not supported by the browser.
-   */
-  @Post('copy-async')
+  @Post('json-to-env')
+  @ApiOperation({
+    summary: 'Upload JSON file or provide JSON body to convert to .env',
+  })
+  @ApiConsumes('multipart/form-data', 'application/json')
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        text: { type: 'string', example: 'Hello, World!' },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Successfully copied text to clipboard asynchronously.',
-  })
-  async copyToClipboardAsync(@Body('text') text: string): Promise<void> {
-    return copyToClipboardAsync(text); // Calling the function from helper.ts
-  }
-
-  /**
-   * Copies the given text to the clipboard synchronously (if possible).
-   *
-   * This function attempts to use the Clipboard API to copy the text. If the
-   * Clipboard API is not available or an error occurs, it will log an error
-   * to the console but will not throw an exception. Synchronous clipboard
-   * access is restricted by browsers for security reasons, so this function
-   * may not always work as expected. It's generally better to use the
-   * asynchronous `copyToClipboardAsync` function if possible.
-   *
-   * @param text The text to copy to the clipboard.
-   */
-  @Post('copy-sync')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        text: { type: 'string', example: 'Hello, World!' },
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+        json: {
+          type: 'object',
+          additionalProperties: { type: 'string' },
+          example: {
+            DB_HOST: 'localhost',
+            DB_USER: 'admin',
+          },
+        },
+        download: {
+          type: 'boolean',
+          example: true,
+          default: false,
+        },
       },
     },
   })
   @ApiResponse({
     status: 200,
     description:
-      'Successfully copied text to clipboard synchronously (may not always succeed).',
+      'Returns .env as a file or raw string based on download option',
   })
-  copyToClipboardSync(@Body('text') text: string): void {
-    copyToClipboardSync(text); // Calling the function from helper.ts
+  @UseInterceptors(FileInterceptor('file'))
+  async jsonToEnv(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: JsonBodyDto,
+    @Res() res: Response,
+  ) {
+    let json: Record<string, string>;
+
+    if (file) {
+      try {
+        json = JSON.parse(file.buffer.toString('utf-8'));
+      } catch {
+        throw new HttpException(
+          'Invalid JSON file format',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    } else if (body?.json) {
+      json = body.json;
+    } else {
+      throw new HttpException(
+        'Either file or JSON body must be provided',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const envContent = Object.entries(json)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+
+    const shouldDownload = body.download ?? false;
+
+    if (shouldDownload) {
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Content-Disposition', 'attachment; filename=".env"');
+      res.send(envContent);
+    } else {
+      res.setHeader('Content-Type', 'text/plain');
+      res.send(envContent);
+    }
   }
+  @Post('env-to-json')
+  @ApiOperation({
+    summary: 'Convert uploaded .env file to JSON',
+    description:
+      'Parses a .env file and returns its contents as a JSON object.',
+  })
+  @ApiBody({
+    description: 'Upload a .env file',
+    type: UploadEnvDto,
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully parsed .env file.',
+    schema: {
+      example: {
+        DB_HOST: 'localhost',
+        DB_USER: 'root',
+        DB_PASS: 'secret',
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async envToJson(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
+    }
+
+    const content = file.buffer.toString('utf-8');
+
+    try {
+      const parsed = dotenv.parse(content);
+      return parsed;
+    } catch (err) {
+      throw new HttpException(
+        'Failed to parse .env file',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+  @Post('extract-title')
+  @ApiOperation({ summary: 'Extracts the title from Markdown content' })
+  @ApiResponse({
+    status: 200,
+    description: 'Title successfully extracted',
+    schema: {
+      example: {
+        title: 'Hello World',
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid input' })
+  extractTitle(@Body() body: MarkdownDto) {
+    const match = body.content.match(/^#{1,2}\s+(.*)/m);
+    const title = match ? match[1].trim() : null;
+    return title;
+  }
+
   // Utility helper functions
   @Post('unique')
   @ApiOperation({ summary: 'Remove duplicates from an array' })

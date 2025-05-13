@@ -42,8 +42,6 @@ export class TerminalGateway
   private readonly logger = new Logger(TerminalGateway.name);
   @WebSocketServer()
   server: Server;
-  private clientDirectories: Map<string, string> = new Map();
-  private clientConversations: Map<string, any[]> = new Map();
 
   constructor(
     private readonly dynamodbService: DynamodbService,
@@ -52,6 +50,7 @@ export class TerminalGateway
   ) {}
 
   async handleConnection(client: Socket) {
+    console.log(client.id, 'client.id');
     console.log(client.handshake?.auth, 'client.handshake?.headers');
     let token;
     const cookies = client.handshake?.headers?.cookie;
@@ -73,10 +72,6 @@ export class TerminalGateway
       client.disconnect();
       return;
     }
-
-    // Initialize conversation history for this client
-    this.clientConversations.set(client.id, []);
-    this.clientDirectories.set(client.id, process.cwd()); // Default cwd
 
     // 🍑 System + Directory Info
     const info = {
@@ -153,7 +148,7 @@ Swap usage:   ${swapUsage[2]} of ${swapUsage[1]} (${swapUsage[2]} used)	Homedir:
     client.on('disconnect', () => {
       console.log(`Client disconnected: ${client.id}`);
       clearInterval(intervalId); // Stop sending updates when the client disconnects
-      this.clientDirectories.delete(client.id);
+      //this.clientDirectories.delete(client.id);
     });
   }
 
@@ -201,7 +196,7 @@ Swap usage:   ${swapUsage[2]} of ${swapUsage[1]} (${swapUsage[2]} used)	Homedir:
     }
 
     const clientId = client.id;
-    let cwd = this.clientDirectories.get(clientId) || process.cwd();
+    let cwd = process.cwd();
 
     const user = client.data.user;
     //const commands = await this.dynamodbService.getStoredCommandsByUser(user.sub);
@@ -213,7 +208,7 @@ Swap usage:   ${swapUsage[2]} of ${swapUsage[1]} (${swapUsage[2]} used)	Homedir:
       const newPath = resolve(cwd, targetPath);
 
       if (existsSync(newPath) && statSync(newPath).isDirectory()) {
-        this.clientDirectories.set(clientId, newPath);
+        //this.clientDirectories.set(clientId, newPath);
         cwd = newPath;
         client.emit('prompt', { cwd, command });
         client.emit('output', `Changed directory to ${newPath}\n`);
@@ -246,10 +241,10 @@ Swap usage:   ${swapUsage[2]} of ${swapUsage[1]} (${swapUsage[2]} used)	Homedir:
       return;
     }
 
-    await this.dynamodbService.storeCommand(command, user.username);
+    //await this.dynamodbService.storeCommand(command, user.sub);
 
-    const allCommandsResult = await this.dynamodbService.getStoredCommands();
-    const allCommands = allCommandsResult.Items ?? [];
+    //const allCommandsResult = await this.dynamodbService.getStoredCommands();
+    /*const allCommands = allCommandsResult.Items ?? [];
 
     const userCommands = allCommands
       .filter((cmd) => cmd.username?.S === client.data.user.email)
@@ -259,8 +254,8 @@ Swap usage:   ${swapUsage[2]} of ${swapUsage[1]} (${swapUsage[2]} used)	Homedir:
         timestamp: cmd.timestamp.S,
         username: client.data.user.email?.S,
       }));
-    console.log(`Client connected: ${user.email}`);
-    client.emit('storedCommands', { user, userCommands });
+    console.log(`Client connected: ${user.sub}`);
+    client.emit('storedCommands', { user, userCommands });*/
     //client.emit('output', `Changed directory to ${newPath}\n`);
     const shell = spawn(command, {
       shell: '/bin/bash',
@@ -280,158 +275,9 @@ Swap usage:   ${swapUsage[2]} of ${swapUsage[1]} (${swapUsage[2]} used)	Homedir:
     });
   }
 
-  @SubscribeMessage('amazon_q_chat')
-  async handleAmazonQChat(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { message: string },
-  ) {
-    try {
-      // Get the current conversation history
-      const conversationHistory = this.clientConversations.get(client.id) || [];
-
-      // Add the user message to the conversation history
-      conversationHistory.push({
-        role: 'user',
-        content: data.message,
-      });
-
-      // Get the current directory for context
-      const currentDirectory =
-        this.clientDirectories.get(client.id) || os.homedir();
-
-      // Create a system prompt with context
-      const systemPrompt = `You are Amazon Q, an AI assistant helping with terminal commands and development tasks. 
-      The user is currently in directory: ${currentDirectory}
-      Provide helpful, concise responses. When suggesting commands, be specific and explain what they do.`;
-
-      // Send the request to Amazon Q
-      const response = await this.amazonQService.chat(
-        conversationHistory,
-        systemPrompt,
-      );
-
-      // Add the assistant response to the conversation history
-      conversationHistory.push({
-        role: 'assistant',
-        content: response.content,
-      });
-
-      // Update the conversation history
-      this.clientConversations.set(client.id, conversationHistory);
-
-      // Send the response back to the client
-      return { event: 'amazon_q_response', data: response };
-    } catch (error) {
-      this.logger.error(
-        `Error in Amazon Q chat: ${error.message}`,
-        error.stack,
-      );
-      return { event: 'error', data: { message: error.message } };
-    }
-  }
-
-  @SubscribeMessage('amazon_q_stream_chat')
-  async handleAmazonQStreamChat(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { message: string },
-  ) {
-    try {
-      // Get the current conversation history
-      const conversationHistory = this.clientConversations.get(client.id) || [];
-
-      // Add the user message to the conversation history
-      conversationHistory.push({
-        role: 'user',
-        content: data.message,
-      });
-
-      // Get the current directory for context
-      const currentDirectory =
-        this.clientDirectories.get(client.id) || os.homedir();
-
-      // Create a system prompt with context
-      const systemPrompt = `You are Amazon Q, an AI assistant helping with terminal commands and development tasks. 
-      The user is currently in directory: ${currentDirectory}
-      Provide helpful, concise responses. When suggesting commands, be specific and explain what they do.`;
-
-      // Send the streaming request to Amazon Q
-      const stream =
-        (await this.amazonQService.streamChat(
-          conversationHistory,
-          systemPrompt,
-        )) || [];
-
-      let fullResponse = '';
-
-      // Process the stream and send chunks to the client
-      for await (const chunk of stream) {
-        if (chunk.chunk?.bytes) {
-          const decodedChunk = JSON.parse(
-            new TextDecoder().decode(chunk.chunk.bytes),
-          );
-
-          // Extract the text from the chunk
-          const chunkText = decodedChunk.outputText || '';
-          fullResponse += chunkText;
-
-          // Send the chunk to the client
-          client.emit('amazon_q_stream_response', { content: chunkText });
-        }
-      }
-
-      // Add the complete assistant response to the conversation history
-      conversationHistory.push({
-        role: 'assistant',
-        content: fullResponse,
-      });
-
-      // Update the conversation history
-      this.clientConversations.set(client.id, conversationHistory);
-
-      // Signal the end of the stream
-      client.emit('amazon_q_stream_end');
-    } catch (error) {
-      this.logger.error(
-        `Error in Amazon Q stream chat: ${error.message}`,
-        error.stack,
-      );
-      client.emit('error', { message: error.message });
-    }
-  }
-
-  @SubscribeMessage('amazon_q_execute_tool')
-  async handleAmazonQExecuteTool(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { toolName: string; parameters: any },
-  ) {
-    try {
-      // Execute the tool
-      const result = await this.amazonQService.executeTool(
-        data.toolName,
-        data.parameters,
-      );
-
-      // Send the result back to the client
-      return { event: 'amazon_q_tool_response', data: result };
-    } catch (error) {
-      this.logger.error(
-        `Error executing Amazon Q tool: ${error.message}`,
-        error.stack,
-      );
-      return { event: 'error', data: { message: error.message } };
-    }
-  }
-
-  @SubscribeMessage('clear_conversation')
-  handleClearConversation(@ConnectedSocket() client: Socket) {
-    // Clear the conversation history for this client
-    this.clientConversations.set(client.id, []);
-    return { event: 'conversation_cleared' };
-  }
-
   handleDisconnect(client: Socket) {
     // Clean up conversation history when client disconnects
-    this.clientConversations.delete(client.id);
-    this.clientDirectories.delete(client.id);
+    //this.clientConversations.delete(client.id);
+    //this.clientDirectories.delete(client.id);
   }
 }

@@ -69,7 +69,7 @@ async function bootstrap() {
 
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api', app, document); // Swagger UI at /api/docs
-    console.log('🥞 Swagger is enabled at /docs');
+    console.log('🥞 Swagger is enabled at /api');
   } else {
     console.log('🚫 Swagger is disabled in production');
   }

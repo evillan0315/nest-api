@@ -5,23 +5,27 @@ import {
   ApiResponse,
   ApiTags,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { CostAndUsageResponse } from './aws-billing.dto';
-import { Roles } from '../admin/roles/roles.decorator'; // Ensure correct path
-import { Role } from '../admin/roles/role.enum'; // Ensure correct path
-import { RolesGuard } from '../admin/roles/roles.guard'; // Ensure correct path
-import { CognitoGuard } from '../aws/cognito/cognito.guard'; // Adjust the path as needed
+import { Roles } from '../admin/roles/roles.decorator'; // Adjust path as needed
+import { Role } from '../admin/roles/role.enum';
+import { RolesGuard } from '../admin/roles/roles.guard';
+import { CognitoGuard } from '../aws/cognito/cognito.guard';
 
-@ApiTags('AWS - Billing') // Updated Swagger grouping
-@ApiBearerAuth() // Requires authentication via Bearer token
+@ApiTags('AWS - Billing')
+@ApiBearerAuth()
 @UseGuards(CognitoGuard, RolesGuard)
 @Controller('api/billing')
 export class AwsBillingController {
   constructor(private readonly awsBillingService: AwsBillingService) {}
 
   @Get('cost-usage')
-  @Roles(Role.ADMIN, Role.SUPERADMIN) // Restrict to Admins
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
   @ApiOperation({ summary: 'Get AWS Cost and Usage' })
+  @ApiQuery({ name: 'granularity', required: false, example: 'MONTHLY' })
+  @ApiQuery({ name: 'startDate', required: true, example: '2025-03-01' })
+  @ApiQuery({ name: 'endDate', required: true, example: '2025-05-01' })
   @ApiResponse({
     status: 200,
     description: 'The cost and usage data was successfully retrieved.',
@@ -32,31 +36,32 @@ export class AwsBillingController {
     description: 'Failed to retrieve cost and usage data.',
   })
   async getCostAndUsage(
-    @Query('Granularity') Granularity: string,
+    @Query('granularity') granularity: 'MONTHLY' | 'DAILY' | 'HOURLY',
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
   ): Promise<CostAndUsageResponse> {
     const awsResponse = await this.awsBillingService.getCostAndUsage(
       startDate,
       endDate,
+      granularity,
     );
 
-    // Log the AWS response for debugging
-    console.log(awsResponse); // Inspect the structure of awsResponse
+    // Optional: log for debugging
+    // console.log('AWS Cost and Usage Response:', awsResponse);
 
-    // Safely map the response data to the DTO
-    const costAndUsageResponse: CostAndUsageResponse = {
-      TotalCost: awsResponse.totalCost || {}, // Use the property from the service response
-      Granularity: awsResponse.granularity || 'MONTHLY',
+    const costAndUsageResponse = {
+      TotalCost: awsResponse.totalCost || {},
+      Granularity: awsResponse.granularity || granularity,
       StartDate: awsResponse.startDate || startDate,
       EndDate: awsResponse.endDate || endDate,
+      Breakdown: awsResponse.breakdown || null,
     };
 
     return costAndUsageResponse;
   }
 
   @Get('budgets')
-  @Roles(Role.ADMIN, Role.SUPERADMIN) // Restrict to Admins
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
   @ApiOperation({ summary: 'Get AWS Budget details' })
   @ApiResponse({
     status: 200,

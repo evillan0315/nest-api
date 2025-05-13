@@ -21,7 +21,9 @@ export class SessionService {
   findOne(id: string) {
     return this.prisma.session.findUnique({ where: { id } });
   }
-
+  findByTokenByUserId(userId: string, sessionToken: string) {
+    return this.prisma.session.findFirst({ where: { userId, sessionToken } });
+  }
   update(id: string, data: UpdateSessionDto) {
     return this.prisma.session.update({ where: { id }, data });
   }

@@ -225,14 +225,14 @@ export class FileController {
   create(@Body() dto: CreateFileDto) {
     return this.fileService.create(dto);
   }*/
-  @Post('generate')
+  @Post('ai-generate')
   @ApiOperation({ summary: 'Generate content using Gemini' })
   @ApiResponse({ status: 200, description: 'Generated content as string.' })
   async generateContent(
     @Body() generateContentDto: GenerateContentDto,
   ): Promise<string> {
-    const { content, type } = generateContentDto;
-    return this.fileService.generate(content, type);
+    const { content, type, topic, chatId } = generateContentDto;
+    return this.fileService.generate(content, type, topic, chatId);
   }
   @Post('create')
   @ApiOperation({ summary: 'Create a new file' })

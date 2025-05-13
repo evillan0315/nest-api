@@ -55,7 +55,6 @@ export class GoogleGeminiController {
     // Save the response from Gemini as a message from the AI
 
     return await this.googleGeminiService.processInputAndSaveToDb(
-      userEmail,
       question,
       chatId,
     );

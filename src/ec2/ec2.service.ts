@@ -18,6 +18,8 @@ import {
   CreateTagsCommand,
   TagSpecification,
   ResourceType,
+  DescribeSecurityGroupsCommand,
+  DescribeSecurityGroupsCommandOutput,
 } from '@aws-sdk/client-ec2';
 import { ConfigService } from '@nestjs/config';
 import { LaunchInstanceDto } from './launch-instance.dto';
@@ -340,7 +342,17 @@ export class Ec2Service {
       throw new BadRequestException(`Failed to add tags: ${error.message}`);
     }
   }
+  async getSecurityGroups(): Promise<any[]> {
+    try {
+      const command = new DescribeSecurityGroupsCommand({});
+      const response: DescribeSecurityGroupsCommandOutput =
+        await this.ec2.send(command);
 
+      return response.SecurityGroups ?? [];
+    } catch (error: any) {
+      throw new Error(`Error fetching security groups: ${error.message}`);
+    }
+  }
   /**
    * Format instance data into a standardized response
    * @param instance Raw EC2 instance data

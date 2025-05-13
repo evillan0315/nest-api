@@ -152,16 +152,17 @@ export class AuthController {
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
           //path: '/api/auth/refresh', // Only send for refresh route
-          maxAge: 24 * 60 * 60 * 1000, // 7 days
+          maxAge: payload.expiresIn || 3600000,
         });
       }
       if (payload.refreshToken) {
+        const timeLeft = payload.expiresAt * 1000 - Date.now();
         res.cookie('refresh_token', payload.refreshToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
           path: '/api/auth/refresh', // Only send for refresh route
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+          maxAge: timeLeft, // 7 days
         });
       }
       return payload;
@@ -230,7 +231,7 @@ export class AuthController {
       response.clearCookie('access_token', {
         httpOnly: true,
         sameSite: 'strict',
-        secure: false, // Ensure secure cookies in production
+        secure: process.env.NODE_ENV === 'production', // Ensure secure cookies in production
       });
 
       return response.json({ message: 'User logged out successfully' });
@@ -504,7 +505,6 @@ export class AuthController {
   @UseGuards(CognitoGuard)
   @Get('profile')
   getProfile(@Request() req) {
-    console.log(req.user, 'req.user');
     return req.user;
   }
 
@@ -626,7 +626,7 @@ export class AuthController {
       );
     }
   }
-  @UseGuards(CognitoGuard)
+  //@UseGuards(CognitoGuard)
   @Post('refresh')
   @ApiOperation({ summary: 'Refresh JWT token using refresh token' })
   @ApiBody({ type: JwtTokenResponseDto })
@@ -643,11 +643,13 @@ export class AuthController {
     @Req() req,
     @Res({ passthrough: true }) res: ExpressResponse,
   ) {
+    res.clearCookie('access_token', {
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production', // Ensure secure cookies in production
+    });
     let payload = req.user;
 
-    if (!payload) {
-      throw new Error('Payload does not exist!');
-    }
     const rawCookie = req.headers.cookie || '';
     const parsedCookies = cookie.parse(rawCookie);
 
@@ -655,6 +657,11 @@ export class AuthController {
 
     if (!token) {
       token = parsedCookies['refresh_token'];
+    }
+
+    const verify = await this.authService.verifyRefreshToken(token);
+    if (verify) {
+      payload = verify;
     }
     const isValid = await this.authService.validateRefreshToken(
       payload.sub,
@@ -664,20 +671,17 @@ export class AuthController {
       throw new Error('Not valid refresh token!');
     }
 
-    const verify = await this.authService.verifyRefreshToken(token);
-    console.log(verify, 'verifyRefreshToken');
-    if (verify) {
-      payload = verify;
-    }
     const newToken = await this.authService.getAccessToken(payload);
-    res.cookie('access_token', newToken, {
+    res.cookie('access_token', newToken.accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 24 * 60 * 60 * 1000, // 1 day
+      maxAge: newToken.expiresIn,
     });
-    const verifyNewToken = await this.authService.verifyAccessToken(newToken);
-    console.log(verifyNewToken, `newToken: ${newToken}`);
-    return newToken;
+    const verifyNewToken = await this.authService.verifyAccessToken(
+      newToken.accessToken,
+    );
+    if (!verifyNewToken) throw new Error('Not valid access token!');
+    return { ...newToken, user: verifyNewToken };
   }
 }

@@ -1,0 +1,28 @@
+import {
+  IsString,
+  IsOptional,
+  IsEmail,
+  IsArray,
+  IsBoolean,
+  IsNumber,
+  IsInt,
+  IsDate,
+  IsObject,
+} from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+export class Create<%= className %>Dto {
+<% fields
+  .filter(field =>
+    field.relationType !== 'one-to-many' &&
+    !['id', 'createdAt', 'updatedAt', 'createdById'].includes(field.name)
+  )
+  .forEach(field => { -%>
+  @ApiProperty({ description: '<%= field.name %> field' })
+  <% field.validators.forEach(validator => { -%>
+  <%= validator %>
+  <% }) -%>
+  <%= field.name %>: <%= field.type %>;
+<% }) %>
+}
+

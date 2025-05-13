@@ -229,4 +229,18 @@ export class Ec2Controller {
   async addTags(@Param('id') id: string, @Body() tags: Record<string, string>) {
     return this.ec2Service.addTags(id, tags);
   }
+  @Get('security-groups')
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @ApiOperation({ summary: 'Get AWS EC2 Security Groups' })
+  @ApiResponse({
+    status: 200,
+    description: 'The security groups were successfully retrieved.',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Failed to retrieve security groups.',
+  })
+  async getSecurityGroups() {
+    return this.ec2Service.getSecurityGroups();
+  }
 }

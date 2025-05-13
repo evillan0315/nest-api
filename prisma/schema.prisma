@@ -18,22 +18,29 @@ model User {
   updatedAt          DateTime?            @updatedAt
   role               String?
   Account            Account[]
-  ApiKey             ApiKey?
+  ApiKey             ApiKey[]
   Chat               Chat[]
   DatabaseConnection DatabaseConnection[]
   File               File[]
   Folder             Folder[]
   Session            Session[]
   Snippet            Snippet[]
-  password Password?
+  password           Password?
+  Project            Project[]
+  Organization       Organization[]
+  FormSchema         FormSchema[]
+  FormSubmission     FormSubmission[]
+  Component          Component[]
 }
-model Password {
-  id                String  @id @default(uuid())
-  hash     String
-  userId   String   @unique // 👈 Ensures one-to-one by making this unique
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model Password {
+  id     String @id @default(uuid())
+  hash   String
+  userId String @unique // 👈 Ensures one-to-one by making this unique
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
 model Account {
   id                String  @id @default(uuid())
   userId            String
@@ -70,12 +77,12 @@ model VerificationToken {
 }
 
 model ApiKey {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  apiKey    String   @unique
-  expire    String?
-  createdAt DateTime @default(now())
-  User      User     @relation(fields: [userId], references: [id])
+  id          String   @id @default(uuid())
+  apiKey      String   @unique
+  expire      String?
+  createdAt   DateTime @default(now())
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdById String
 }
 
 model ApiUsage {
@@ -106,6 +113,8 @@ model Component {
   props       Json?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime? @updatedAt
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdById String
 }
 
 model Documentation {
@@ -121,11 +130,11 @@ model File {
   name        String
   content     String
   createdAt   DateTime  @default(now())
-  createdById String
   folderId    String?
   path        String    @unique
   updatedAt   DateTime? @updatedAt
   createdBy   User      @relation(fields: [createdById], references: [id])
+  createdById String
   folder      Folder?   @relation(fields: [folderId], references: [id])
 }
 
@@ -153,11 +162,23 @@ model Message {
   Chat      Chat       @relation(fields: [chatId], references: [id])
 }
 
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+}
+
 model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
 }
 
 model Snippet {
@@ -186,6 +207,29 @@ model DatabaseConnection {
   updatedAt        DateTime @updatedAt
   createdById      String
   createdBy        User     @relation(fields: [createdById], references: [id])
+}
+
+model FormSchema {
+  id          String           @id @default(uuid())
+  title       String
+  modelName   String
+  schema      Json
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  submissions FormSubmission[]
+  createdById String
+  createdBy   User             @relation(fields: [createdById], references: [id])
+}
+
+model FormSubmission {
+  id          String     @id @default(uuid())
+  formId      String
+  form        FormSchema @relation(fields: [formId], references: [id])
+  data        Json
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  createdById String
+  createdBy   User       @relation(fields: [createdById], references: [id])
 }
 
 enum Sender {

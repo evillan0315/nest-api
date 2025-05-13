@@ -24,21 +24,25 @@ import { DockerModule } from './docker/docker.module';
 import { DocumentationModule } from './documentation/documentation.module';
 import { OrganizationModule } from './organization/organization.module';
 import { ChatModule } from './chat/chat.module';
-import { ApiKeyModule } from './apiKey/apiKey.module';
+import { ApiKeyModule } from './api-key/api-key.module';
 import { FolderModule } from './folder/folder.module';
 import { ComponentModule } from './component/component.module';
 import { MessageModule } from './message/message.module';
-import { ApiUsageModule } from './apiUsage/apiUsage.module';
+import { ApiUsageModule } from './api-usage/api-usage.module';
 import { SessionModule } from './session/session.module';
 import { VerificationTokenModule } from './verificationToken/verificationToken.module';
 import { AccountModule } from './account/account.module';
-import { DatabaseConnectionModule } from './databaseConnection/databaseConnection.module';
+import { DatabaseConnectionModule } from './database-connection/database-connection.module';
 import { RdsModule } from './rds/rds.module';
 import { SnippetModule } from './snippet/snippet.module';
 import { PasswordModule } from './password/password.module';
 import { EmailModule } from './email/email.module';
 import { UtilsModule } from './utils/utils.module';
-
+import { GithubModule } from './github/github.module';
+import { FormSchemaModule } from './form-schema/form-schema.module';
+import { FormSubmissionModule } from './form-submission/form-submission.module';
+import { ProjectModule } from './project/project.module';
+import { PdfConverterModule } from './utils/pdf-converter.module';
 @Module({
   controllers: [AppController, DockerController],
   providers: [AppService, GoogleStrategy],
@@ -83,6 +87,11 @@ import { UtilsModule } from './utils/utils.module';
     PasswordModule,
     EmailModule,
     UtilsModule,
+    GithubModule,
+    FormSchemaModule,
+    FormSubmissionModule,
+    ProjectModule,
+    PdfConverterModule,
   ],
 })
 export class AppModule {}

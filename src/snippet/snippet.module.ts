@@ -6,6 +6,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 @Module({
   imports: [PrismaModule],
   controllers: [SnippetController],
-  providers: [SnippetService],
+  providers: [SnippetService]
 })
 export class SnippetModule {}
+

@@ -1,0 +1,98 @@
+import { Controller, Get, Post, Body, Param, Patch, Delete, UseGuards } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiBadRequestResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse
+} from '@nestjs/swagger';
+import { Roles } from '../admin/roles/roles.decorator';
+import { Role } from '../admin/roles/role.enum';
+import { RolesGuard } from '../admin/roles/roles.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt.guard';
+
+import { <%= className %>Service } from './<%= folderName %>.service';
+import { Create<%= className %>Dto } from './dto/create-<%= folderName %>.dto';
+import { Update<%= className %>Dto } from './dto/update-<%= folderName %>.dto';
+
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiTags('<%= className %>')
+@Controller('api/<%= folderName %>')
+export class <%= className %>Controller {
+  constructor(private readonly <%= fileName %>Service: <%= className %>Service) {}
+
+  @Post()
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @ApiOperation({ summary: 'Create new <%= className %>' })
+  @ApiCreatedResponse({
+    description: 'Successfully created <%= className %>.',
+    type: Create<%= className %>Dto,
+  })
+  @ApiBadRequestResponse({ description: 'Invalid input or validation failed.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized access (no valid token).' })
+  @ApiForbiddenResponse({ description: 'Forbidden: insufficient permissions.' })
+  create(@Body() dto: Create<%= className %>Dto) {
+    return this.<%= fileName %>Service.create(dto);
+  }
+
+  @Get()
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @ApiOperation({ summary: 'Get all <%= className %> records' })
+  @ApiOkResponse({
+    description: 'Array of <%= className %> records.',
+    type: [Create<%= className %>Dto],
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized access (no valid token).' })
+  @ApiForbiddenResponse({ description: 'Forbidden: insufficient permissions.' })
+  findAll() {
+    return this.<%= fileName %>Service.findAll();
+  }
+
+  @Get(':id')
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @ApiOperation({ summary: 'Get one <%= className %> by ID' })
+  @ApiOkResponse({
+    description: 'The requested <%= className %> record.',
+    type: Create<%= className %>Dto,
+  })
+  @ApiNotFoundResponse({ description: '<%= className %> not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized access (no valid token).' })
+  @ApiForbiddenResponse({ description: 'Forbidden: insufficient permissions.' })
+  findOne(@Param('id') id: string) {
+    return this.<%= fileName %>Service.findOne(id);
+  }
+
+  @Patch(':id')
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @ApiOperation({ summary: 'Update <%= className %> by ID' })
+  @ApiOkResponse({
+    description: 'Successfully updated <%= className %>.',
+    type: Update<%= className %>Dto,
+  })
+  @ApiBadRequestResponse({ description: 'Invalid update payload.' })
+  @ApiNotFoundResponse({ description: '<%= className %> not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized access (no valid token).' })
+  @ApiForbiddenResponse({ description: 'Forbidden: insufficient permissions.' })
+  update(@Param('id') id: string, @Body() dto: Update<%= className %>Dto) {
+    return this.<%= fileName %>Service.update(id, dto);
+  }
+
+  @Delete(':id')
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @ApiOperation({ summary: 'Delete <%= className %> by ID' })
+  @ApiOkResponse({
+    description: 'Successfully deleted <%= className %>.',
+    type: String,
+  })
+  @ApiNotFoundResponse({ description: '<%= className %> not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized access (no valid token).' })
+  @ApiForbiddenResponse({ description: 'Forbidden: insufficient permissions.' })
+  remove(@Param('id') id: string) {
+    return this.<%= fileName %>Service.remove(id);
+  }
+}

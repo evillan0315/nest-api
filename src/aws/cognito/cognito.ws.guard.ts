@@ -63,14 +63,8 @@ export class CognitoWsGuard implements CanActivate {
           'Token does not exists. Please log in again.',
         );
       }
-      const user = await this.userService.findByEmail(
-        (decodedToken as jwt.JwtPayload).email,
-      );
-      if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
 
-      client.data.user = user; // Attach user to socket
+      client.data.user = decodedToken as jwt.JwtPayload; // Attach user to socket
 
       return true;
     } catch (err) {
